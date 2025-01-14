@@ -36,4 +36,5 @@ fi
 
 while :; do
 	dark-notify -c "$TMUX_THEME_SETTER"
+	sleep 1 # Throttle the loop
 done
