@@ -19,12 +19,15 @@ if pgrep -qf "$SCRIPT_NAME"; then
 	exit 0
 fi
 
-# Load Homebrew PATHs
-if ! program_is_in_path brew; then
-	echo "Could not find brew(1) in \$PATH" >&2
-	exit 1
+# If BREW_PREFIX is already set, skip calling brew shellenv
+if [ -z "${BREW_PREFIX-}" ]; then
+	# Load Homebrew PATHs
+	if ! program_is_in_path brew; then
+		echo "Could not find brew(1) in \$PATH" >&2
+		exit 1
+	fi
+	eval "$(brew shellenv)"
 fi
-eval "$(brew shellenv)"
 
 if ! program_is_in_path dark-notify; then
 	echo "Could not find dark-notify(1) in \$PATH" >&2
