@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # This script will run dark-notify(1) in a while loop (in case it would exit).
+# vim: ft=bash ts=2 sw=2 tw=80
 
 set -o errexit
 set -o pipefail
 [[ "${TRACE-0}" =~ ^1|t|y|true|yes$ ]] && set -o xtrace
 
-CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-SCRIPT_NAME="$(basename $0)"
+CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_NAME="$(basename "$0")"
 TMUX_THEME_SETTER="${CURRENT_DIR}/tmux-theme-mode.sh"
 
 program_is_in_path() {
-	local program="$1"
 	type "$1" >/dev/null 2>&1
 }
 

@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# This script will set the tmux theme in use by rewriting a symlink and then sourcing the theme.
-# The dark/light theme paths should be configured in tmux user options (@-prefixed).
+# This script will set the tmux theme in use by rewriting a symlink and then
+# sourcing the theme. The dark/light theme paths should be configured in
+# tmux user options (@-prefixed).
 #
-# Why write symlink and not just source? Because if tmux.conf uses the tmux-clear plugin and tmux.conf is resourced, then this plugin might not load. Then it's convenient to also have a "tmux source-file path/to/the/symlink-theme.conf" so that the right theme is still loaded.
+# Why write symlink and not just source? Because if tmux.conf uses the tmux-clear
+# plugin and tmux.conf is resourced, then this plugin might not load.
+# Then it's convenient to also have a
+# "tmux source-file path/to/the/symlink-theme.conf" so that the right
+# theme is still loaded.
+#
+# vim: ft=bash ts=2 sw=2 tw=80
 
 set -o errexit
 set -o pipefail
 [[ "${TRACE-0}" =~ ^1|t|y|true|yes$ ]] && set -o xtrace
 
 SCRIPT_NAME=${0##*/}
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 cd "$SCRIPT_DIR"
 
 OPTION_THEME_LIGHT="@dark-notify-theme-path-light"
@@ -20,11 +27,9 @@ Set tmux dark/light mode.
 Usage: $ ${SCRIPT_NAME} light|dark
 EOF
 
-
-
 TMUX_STATED=${XDG_STATE_HOME:-$HOME/.local/state}/tmux
-! [ -d $TMUX_STATED ] && mkdir -p $TMUX_STATED
-TMUX_THEME_LINK=$TMUX_STATED/tmux-dark-notify-theme.conf
+! [ -d "$TMUX_STATED" ] && mkdir -p "$TMUX_STATED"
+TMUX_THEME_LINK="$TMUX_STATED/tmux-dark-notify-theme.conf"
 
 tmux_get_option() {
 	local option=$1
@@ -33,7 +38,7 @@ tmux_get_option() {
 		echo "Required tmux plugin option '$option' not set!" >&2
 		exit 1
 	fi
-	echo $opt_val
+	echo "$opt_val"
 }
 
 tmux_set_theme_mode() {
@@ -44,6 +49,7 @@ tmux_set_theme_mode() {
 	else
 		theme_path=$(tmux_get_option $OPTION_THEME_LIGHT)
 	fi
+
 	# Expand e.g. $HOME
 	theme_path=$(eval echo "$theme_path")
 	if [ ! -r "$theme_path" ]; then
@@ -51,14 +57,20 @@ tmux_set_theme_mode() {
 		exit 2
 	fi
 	tmux source-file "$theme_path"
-	ln -sf "$theme_path" $TMUX_THEME_LINK
+	ln -sf "$theme_path" "$TMUX_THEME_LINK"
 }
 
 mode=
 while getopts ":c:h?" opt; do
 	case "$opt" in
-		:) echo "Option -$OPTARG requires an argument." >&2; exit 1;;
-		h|?|*) echo -e "$USAGE"; exit 0;;
+	:)
+		echo "Option -$OPTARG requires an argument." >&2
+		exit 1
+		;;
+	h | ? | *)
+		echo -e "$USAGE"
+		exit 0
+		;;
 	esac
 done
 shift $(($OPTIND - 1))
