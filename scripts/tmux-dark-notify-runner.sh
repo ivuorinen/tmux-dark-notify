@@ -15,7 +15,11 @@ program_is_in_path() {
 }
 
 if pgrep -qf "$SCRIPT_NAME"; then
-	echo "$SCRIPT_NAME is already running, nothing to do here."
+	# When refreshing tmux config the message is shown.
+	# This checks if we are in a tmux session, and doesn't echo it.
+	if [ ! "$TMUX" ]; then
+		echo "$SCRIPT_NAME is already running, nothing to do here."
+	fi
 	exit 0
 fi
 
