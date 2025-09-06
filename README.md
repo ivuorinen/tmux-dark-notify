@@ -1,85 +1,258 @@
-# tmux-dark-notify - Make tmux's theme follow macOS dark/light mode 
-[![Top programming languages used](https://img.shields.io/github/languages/top/erikw/tmux-dark-notify)](#)
-[![SLOC](https://img.shields.io/tokei/lines/github/erikw/tmux-dark-notify?logo=codefactor&logoColor=lightgrey)](#)
-[![License](https://img.shields.io/github/license/erikw/tmux-dark-notify?color=informational)](LICENSE.txt)
-[![OSS Lifecycle](https://img.shields.io/osslifecycle/erikw/tmux-dark-notify)](https://github.com/Netflix/osstracker)
-[![Latest tag](https://img.shields.io/github/v/tag/erikw/tmux-dark-notify)](https://github.com/erikw/tmux-powerline/tags)
+# tmux-dark-notify - Make tmux's theme follow macOS dark/light mode
 
-This tmux [tpm](https://github.com/tmux-plugins/tpm) plugin will change the tmux theme automatically when the system changes the light/dark mode. Configure a light and a dark theme and the plugin will take care of the rest!
+This tmux [tpm][t] plugin automatically changes the tmux theme when the system switches between light/dark mode. Configure light and dark themes, and the plugin handles the rest!
+
 
 ![Demo of changing system theme](demo.gif)
 
+## Table of Contents
 
-For example I use a Solarized in all my programs that support it. For tmux I use [seebi/tmux-colors-solarized](https://github.com/seebi/tmux-colors-solarized) which is locally cloned (in my dotfiles as a submodule). This tmux theme repo provides a light theme `tmuxcolors-light.conf` and a dark theme `tmuxcolors-dark.conf`. With this tmux plugin, I have configured so that when the system appearance mode changes, the corresponding tmux theme will be used.
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Troubleshooting](#troubleshooting)
+- [Advanced Usage](#advanced-usage)
+- [Tips & Related Tools](#tips--related-tools)
+- [More tmux plugins](#more-tmux-plugins)
 
-Hats off to [dark-notify](https://github.com/cormacrelf/dark-notify) which this plugin is built up on!
+## Features
 
-# Setup
+- 🌙 **Automatic theme switching** - Responds to macOS system appearance changes
+- 🔒 **Robust process management** - Lock file system prevents duplicate instances
+- 🎯 **Single-file design** - Simple unified script architecture
+- 🛠️ **Manual control** - Switch themes manually when needed
+- 📁 **State management** - Maintains theme symlinks for tmux config integration
+- 🔧 **Error handling** - Comprehensive validation and helpful error messages
+
 ## Requirements
-* macOS - dark-notify is only for mac
-* Bash
-* Homebrew
-* [dark-notify](https://github.com/cormacrelf/dark-notify) - `$ brew install dark-notify`
-* tmux
-* [tpm](https://github.com/tmux-plugins/tpm) - Tmux Plugin Manager
 
-## Setup steps
-1. Make sure all requirements above are installed and working already.
-2. Configure tmux-dark-notify in `tmux.conf`
-   * To install the plugin, add a line 
-     ```conf
-      set -g @plugin 'erikw/tmux-dark-notify'
-     ```
-   * Now you must configure the paths for the light/dark themes you want to use. I personally have [seebi/tmux-colors-solarized](https://github.com/seebi/tmux-colors-solarized) installed as a TPM plugin. NOTE that in the tmux.conf any themes must be set up before tmux-dark-notify, otherwise they might override the theme set by this plugin. . Change the paths below to your themes.
-     ```conf
-     set -g @dark-notify-theme-path-light '$HOME/.config/tmux/plugins/tmux-colors-solarized/tmuxcolors-light.conf'
-     set -g @dark-notify-theme-path-dark '$HOME/.config/tmux/plugins/tmux-colors-solarized/tmuxcolors-dark.conf'
-     ```
-   * To cover some corner cases e.g. if you use the plugin [tmux-reset](https://github.com/hallazzang/tmux-reset) or another TPM plugin sets the theme itself, I recommend adding this explicit source of the theme as well as a fallback in case this plugin is not run in all scenarios. The `if-shell` condition is there because the symlink won't be there the very first time until tmux-dark-notify has run. It should be placed after TPM is initialized, because the ordering of plugin initialization is not guaranteed. **Remove any other** `source-file` for theme you have of course!
-     ```conf
-     run-shell '~/.config/tmux/plugins/tpm/tpm' # Or however you source tpm.
+- **macOS** - dark-notify is macOS-specific
+- **Bash** - For script execution
+- **Homebrew** - Package manager for dependencies
+- **[dark-notify][dn]** - Install with `brew install dark-notify`
+- **tmux** - Terminal multiplexer
+- **[tpm][t]** - Tmux Plugin Manager (optional but recommended)
 
-     if-shell "test -e ~/.local/state/tmux/tmux-dark-notify-theme.conf" \
-	      "source-file ~/.local/state/tmux/tmux-dark-notify-theme.conf"
-     ```
-   * Thus in summary, the relevant section of you `tmux.conf` could look like this (including the theme I use)
-     ```conf
-     [...]
+## Installation
 
-     set -g @plugin 'seebi/tmux-colors-solarized'
-     set -g @plugin 'erikw/tmux-dark-notify'
+1. **Install dependencies:**
+   ```bash
+   brew install dark-notify
+   ```
 
-     set -g @dark-notify-theme-path-light '$HOME/.config/tmux/plugins/tmux-colors-solarized/tmuxcolors-light.conf'
-     set -g @dark-notify-theme-path-dark '$HOME/.config/tmux/plugins/tmux-colors-solarized/tmuxcolors-dark.conf'
+2. **Add plugin to tmux.conf:**
+   ```conf
+   set -g @plugin 'ivuorinen/tmux-dark-notify'
+   ```
 
-     [...]
-     run-shell '~/.config/tmux/plugins/tpm/tpm' # Or however you source tpm.
+3. **Install with tpm:**
+   Press `<prefix>I` (default: `Ctrl-b I`) to install the plugin.
 
-     if-shell "test -e ~/.local/state/tmux/tmux-dark-notify-theme.conf" \
-	      "source-file ~/.local/state/tmux/tmux-dark-notify-theme.conf"
-     ```
-3. Install the plugin with `<prefix>I`, unless you changed [tpm's keybindings](https://github.com/tmux-plugins/tpm#key-bindings).
-4. Try toggle the system's appearance mode from System Settings and see that the tmux theme is changing
-   * To verify, you can `ls -l ~/.local/state/tmux/tmux-dark-notify-theme.conf` to see that it is linked to the light or dark theme you configured.
+## Configuration
 
+### 1. Configure Theme Paths
 
+Add these options to your `tmux.conf` before the tpm initialization:
 
-# Tips on more light/dark mode configuration
-* NeoVim: set up [dark-notify](https://github.com/cormacrelf/dark-notify) to change our nvim theme as well!
-* [iTerm2](https://iterm2.com/downloads.html): Use version >=3.5 (currently in beta) as it has support for automatically changing the whole terminal theme between light/dark when the system appearance mode changes. This is what I have in the demo GIF at the top of this file.
-  * Go to iTerm2 Preferences > Profiles > your profile > Colors (tab):
-    * Check the "Use different colors for light and dark mode"
-    * Under "Editing:", chose your light and dark colors (tip: usee the color presets button).
-* Global keyboard shortcut: Create a global keyboard shortcut to toggle mode in macOS.
-  * Open Automator.app
-    * Create a new `Quick Action`.
-    * Drag from the list to the left the  "Change System Appearace" to the areaon the rnage, and set "Change Appearance" to "Toggle Light/Dark".
-    * Save it e.g. as `apperance_toggle`.
-  * Open System Settings > Keyboard > Keyboard shortcuts (button) > Services
-    * Find the `apperance_toggle` service we just created under the General category
-    * Bind it to a shortcut e.g.  CTRL+OPT+CMD+t (this shortcut was used when feature first appeared in a beta version of macOS).
+```conf
+set -g @dark-notify-theme-path-light '/path/to/your/light-theme.conf'
+set -g @dark-notify-theme-path-dark '/path/to/your/dark-theme.conf'
+```
 
+**Example with Solarized themes:**
+```conf
+set -g @dark-notify-theme-path-light '$HOME/.config/tmux/plugins/tmux-colors-solarized/tmuxcolors-light.conf'
+set -g @dark-notify-theme-path-dark '$HOME/.config/tmux/plugins/tmux-colors-solarized/tmuxcolors-dark.conf'
+```
 
-# More tmux plugins
-I have another tmux plugin that might interest you:
-* [tmux-powerline](https://github.com/erikw/tmux-powerline) - A tmux plugin giving you a hackable status bar consisting of dynamic & beautiful looking powerline segments, written purely in bash.
+### 2. Add Theme Fallback (Recommended)
+
+Add this **after** tpm initialization to ensure themes load even if the plugin hasn't run yet:
+
+```conf
+# Initialize tpm (this line should already exist)
+run '~/.config/tmux/plugins/tpm/tpm'
+
+# Fallback theme loading
+if-shell "test -e ~/.local/state/tmux/tmux-dark-notify-theme.conf" \
+  "source-file ~/.local/state/tmux/tmux-dark-notify-theme.conf"
+```
+
+### 3. Complete Configuration Example
+
+```conf
+# Theme plugins (install these first)
+set -g @plugin 'seebi/tmux-colors-solarized'
+set -g @plugin 'ivuorinen/tmux-dark-notify'
+
+# Configure theme paths
+set -g @dark-notify-theme-path-light '$HOME/.config/tmux/plugins/tmux-colors-solarized/tmuxcolors-light.conf'
+set -g @dark-notify-theme-path-dark '$HOME/.config/tmux/plugins/tmux-colors-solarized/tmuxcolors-dark.conf'
+
+# Initialize tpm
+run '~/.config/tmux/plugins/tpm/tpm'
+
+# Fallback theme loading
+if-shell "test -e ~/.local/state/tmux/tmux-dark-notify-theme.conf" \
+  "source-file ~/.local/state/tmux/tmux-dark-notify-theme.conf"
+```
+
+### 4. Verify Installation
+
+1. Reload tmux config: `<prefix>r` or restart tmux
+2. Check the theme symlink:
+   ```bash
+   ls -l ~/.local/state/tmux/tmux-dark-notify-theme.conf
+   ```
+3. Toggle your system appearance mode and watch tmux theme change!
+
+## Usage
+
+The plugin runs automatically once installed, but you can also use it manually:
+
+### Automatic Mode (Default)
+
+The plugin launches automatically with tmux and runs in the background, monitoring for system appearance changes.
+
+### Manual Theme Switching
+
+```bash
+# Switch to dark theme
+~/.config/tmux/plugins/tmux-dark-notify/main.tmux --theme dark
+
+# Switch to light theme
+~/.config/tmux/plugins/tmux-dark-notify/main.tmux --theme light
+```
+
+### Daemon Control
+
+```bash
+# Start daemon manually
+~/.config/tmux/plugins/tmux-dark-notify/main.tmux --daemon
+
+# Show help
+~/.config/tmux/plugins/tmux-dark-notify/main.tmux --help
+```
+
+## Troubleshooting
+
+### Plugin Not Working
+
+1. **Check dark-notify installation:**
+   ```bash
+   which dark-notify
+   # Should output: /opt/homebrew/bin/dark-notify (or similar)
+   ```
+
+2. **Verify theme paths exist:**
+
+   ```bash
+   # Check if your theme files are readable
+   test -r "$HOME/.config/tmux/plugins/tmux-colors-solarized/tmuxcolors-light.conf" && echo "Light theme OK"
+   test -r "$HOME/.config/tmux/plugins/tmux-colors-solarized/tmuxcolors-dark.conf" && echo "Dark theme OK"
+   ```
+
+3. **Check plugin status:**
+   ```bash
+   # Look for running daemon
+   ps aux | grep tmux-dark-notify
+
+   # Check lock file
+   ls -la ~/.local/state/tmux/tmux-dark-notify.lock
+   ```
+
+### Themes Not Switching
+
+1. **Verify tmux options are set:**
+   ```bash
+   tmux show-options -g | grep dark-notify
+   ```
+2. **Test manual switching:**
+   ```bash
+   ~/.config/tmux/plugins/tmux-dark-notify/main.tmux --theme dark
+   ```
+3. **Check theme symlink:**
+   ```bash
+   ls -l ~/.local/state/tmux/tmux-dark-notify-theme.conf
+   ```
+
+### Multiple Instances Running
+
+The plugin uses a lock file system to prevent duplicate instances. If you see issues:
+
+1. **Remove stale lock file:**
+   ```bash
+   rm ~/.local/state/tmux/tmux-dark-notify.lock
+   ```
+
+2. **Restart the plugin:**
+   ```bash
+   ~/.config/tmux/plugins/tmux-dark-notify/main.tmux
+   ```
+
+## Advanced Usage
+
+### Custom State Directory
+
+Set a custom state directory using the XDG specification:
+
+```bash
+export XDG_STATE_HOME="$HOME/.local/state"
+```
+
+### Debug Mode
+
+Enable trace mode for debugging:
+
+```bash
+TRACE=1 ~/.config/tmux/plugins/tmux-dark-notify/main.tmux --daemon
+```
+
+### Integration with Scripts
+
+You can call the theme switcher from your own scripts:
+
+```bash
+#!/bin/bash
+# Switch to dark theme for late-night coding
+~/.config/tmux/plugins/tmux-dark-notify/main.tmux --theme dark
+```
+
+## Tips & Related Tools
+
+### NeoVim Integration
+
+Set up [dark-notify][dn] to change your Neovim theme as well!
+
+### iTerm2 Auto-Switching
+
+Use iTerm2 version ≥3.5 for automatic terminal theme switching:
+1. Go to **iTerm2 Preferences → Profiles → [your profile] → Colors**
+2. Check **"Use different colors for light and dark mode"**
+3. Configure your light and dark color schemes
+
+### Global Keyboard Shortcut
+
+Create a macOS keyboard shortcut to toggle system appearance:
+
+1. **Create Quick Action in Automator:**
+   - Open Automator.app
+   - Create a new **Quick Action**
+   - Add **"Change System Appearance"** action
+   - Set to **"Toggle Light/Dark"**
+   - Save as `appearance_toggle`
+2. **Add Keyboard Shortcut:**
+   - Open **System Settings → Keyboard → Keyboard Shortcuts → Services**
+   - Find your `appearance_toggle` service under **General**
+   - Assign a shortcut (e.g., **⌃⌥⌘T**)
+
+---
+
+Built on top of the excellent [dark-notify][dn] by Cormac Relf and original [tmux-dark-notify][orig] by [Erik Westrup][e]!*
+
+[dn]: https://github.com/cormacrelf/dark-notify
+[t]: https://github.com/tmux-plugins/tpm
+[orig]: https://github.com/erikw/tmux-dark-notify
+[e]: https://github.com/erikw
