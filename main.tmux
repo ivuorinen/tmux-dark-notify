@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# tmux-dark-notify - Make tmux's theme follow macOS dark/light mode
+# tmux-dark-notify - Make tmux's theme follow system dark/light mode
+#
+# Supports macOS (via dark-notify) and Linux (GNOME, KDE, COSMIC).
 #
 # This unified script handles all functionality:
 # - Entry point: Launch daemon if not running
-# - Daemon mode: Run dark-notify loop
+# - Daemon mode: Run backend monitor loop
 # - Theme mode: Switch tmux theme
 #
 # vim: ft=bash ts=2 sw=2 tw=80
@@ -17,89 +19,77 @@ set -o pipefail
 # =============================================================================
 
 SCRIPT_NAME="$(basename "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Lock file management
+# State directory (XDG compliant)
 TMUX_STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/tmux"
-LOCK_FILE="${TMUX_STATE_DIR}/tmux-dark-notify.lock"
 
 # Theme configuration
 OPTION_THEME_LIGHT="@dark-notify-theme-path-light"
 OPTION_THEME_DARK="@dark-notify-theme-path-dark"
 
+# Per-server PID tracking
+MONITOR_PID=
+
 # =============================================================================
-# UTILITY FUNCTIONS
+# PLATFORM DISPATCH
 # =============================================================================
 
-program_is_in_path() {
-  type "$1" >/dev/null 2>&1
+case "$OSTYPE" in
+  darwin*) source "$SCRIPT_DIR/scripts/backend-macos.sh" ;;
+  linux*)  source "$SCRIPT_DIR/scripts/backend-linux.sh" ;;
+  *)
+    echo "Unsupported platform: $OSTYPE" >&2
+    exit 1
+    ;;
+esac
+
+# =============================================================================
+# PID FILE MANAGEMENT
+# =============================================================================
+
+_compute_pid_file() {
+  local tmux_socket="${TMUX%%,*}"
+  local pid_key
+
+  if command -v md5sum &>/dev/null; then
+    pid_key=$(echo -n "$tmux_socket" | md5sum | cut -d' ' -f1)
+  elif command -v md5 &>/dev/null; then
+    pid_key=$(md5 -qs "$tmux_socket")
+  else
+    pid_key=$(echo -n "$tmux_socket" | tr '/' '_')
+  fi
+
+  echo "${TMUX_STATE_DIR}/tmux-dark-notify-${pid_key}.pid"
 }
 
-is_process_running() {
-  local pid=$1
-  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
-}
+create_pid_file() {
+  local pid_file="$1"
 
-# =============================================================================
-# LOCK FILE MANAGEMENT
-# =============================================================================
-
-create_lock() {
-  # Ensure state directory exists
   if [[ ! -d "$TMUX_STATE_DIR" ]]; then
     if ! mkdir -p "$TMUX_STATE_DIR"; then
-      echo "Failed to create tmux state directory: $TMUX_STATE_DIR" >&2
+      echo "Failed to create state directory: $TMUX_STATE_DIR" >&2
       return 1
     fi
   fi
 
-  # Atomic lock file creation
-  if (
-    set -C
-    {
-      echo "PID: $$"
-      echo "STARTED: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      echo "HOSTNAME: $(hostname)"
-      echo "SCRIPT: $SCRIPT_NAME"
-    } >"$LOCK_FILE"
-  ) 2>/dev/null; then
-    return 0
-  else
-    return 1
-  fi
+  echo $$ > "$pid_file"
 }
 
-check_lock() {
-  [[ -f "$LOCK_FILE" ]] || return 1
+check_pid_file() {
+  local pid_file="$1"
+  [[ -f "$pid_file" ]] || return 1
 
-  local lock_pid
-  lock_pid=$(grep "^PID:" "$LOCK_FILE" 2>/dev/null | cut -d' ' -f2)
+  local existing_pid
+  existing_pid=$(cat "$pid_file" 2>/dev/null)
 
-  if [[ -z "$lock_pid" ]]; then
-    # Malformed lock file
-    return 1
+  if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+    return 0  # Process is running
   fi
 
-  if is_process_running "$lock_pid"; then
-    # Process is running, lock is valid
-    return 0
-  else
-    # Stale lock, remove it
-    remove_lock
-    return 1
-  fi
-}
-
-remove_lock() {
-  [[ -f "$LOCK_FILE" ]] && rm -f "$LOCK_FILE"
-}
-
-cleanup_and_exit() {
-  remove_lock
-  exit 0
-}
-
-is_runner_active() {
-  check_lock
+  # Stale PID file
+  rm -f "$pid_file"
+  return 1
 }
 
 # =============================================================================
@@ -120,10 +110,9 @@ tmux_get_option() {
 tmux_set_theme_mode() {
   local mode="$1"
 
-  # Ensure state directory exists
   if [[ ! -d "$TMUX_STATE_DIR" ]]; then
     if ! mkdir -p "$TMUX_STATE_DIR"; then
-      echo "Failed to create tmux state directory: $TMUX_STATE_DIR" >&2
+      echo "Failed to create state directory: $TMUX_STATE_DIR" >&2
       exit 3
     fi
   fi
@@ -135,7 +124,7 @@ tmux_set_theme_mode() {
     theme_path=$(tmux_get_option "$OPTION_THEME_LIGHT")
   fi
 
-  # Expand e.g. $HOME
+  # Expand variables like $HOME in theme path
   theme_path=$(eval echo "$theme_path")
   if [[ ! -r "$theme_path" ]]; then
     echo "The configured $mode theme is not readable: $theme_path" >&2
@@ -160,11 +149,11 @@ tmux_set_theme_mode() {
 
 show_usage() {
   cat <<EOF
-tmux-dark-notify - Make tmux's theme follow macOS dark/light mode
+tmux-dark-notify - Make tmux's theme follow system dark/light mode
 
 Usage:
   $SCRIPT_NAME                 Launch daemon (default mode)
-  $SCRIPT_NAME --daemon        Run dark-notify daemon loop
+  $SCRIPT_NAME --daemon        Run monitor daemon loop
   $SCRIPT_NAME --theme <mode>  Set theme (light|dark)
   $SCRIPT_NAME --help          Show this help
 
@@ -174,64 +163,53 @@ Examples:
 EOF
 }
 
+cleanup() {
+  [[ -n "${PID_FILE-}" ]] && rm -f "$PID_FILE"
+  [[ -n "${MONITOR_PID-}" ]] && kill "$MONITOR_PID" 2>/dev/null || true
+}
+
 entry_point_mode() {
-  # Check if runner is already active
-  if is_runner_active; then
-    # Already running, nothing to do
+  local pid_file
+  pid_file=$(_compute_pid_file)
+
+  if check_pid_file "$pid_file"; then
     exit 0
   fi
 
-  # Launch daemon in background with proper detachment
-  # Redirect stdin/stdout/stderr to prevent tmux hanging
   nohup "$0" --daemon </dev/null >/dev/null 2>&1 &
-
-  # Give the daemon a moment to start and create lock file
   sleep 0.1
 }
 
 daemon_mode() {
-  if check_lock; then
-    # When refreshing tmux config the message is shown.
-    # This checks if we are in a tmux session, and doesn't echo it.
-    if [[ ! "$TMUX" ]]; then
-      echo "$SCRIPT_NAME daemon is already running, nothing to do here."
+  PID_FILE=$(_compute_pid_file)
+
+  if check_pid_file "$PID_FILE"; then
+    if [[ ! "${TMUX-}" ]]; then
+      echo "$SCRIPT_NAME daemon is already running for this tmux server."
     fi
     exit 0
   fi
 
-  # Try to create lock file
-  if ! create_lock; then
-    if [[ ! "$TMUX" ]]; then
-      echo "Failed to create lock file. Another instance may be starting." >&2
+  if ! create_pid_file "$PID_FILE"; then
+    if [[ ! "${TMUX-}" ]]; then
+      echo "Failed to create PID file. Another instance may be starting." >&2
     fi
     exit 1
   fi
 
-  # Set up signal handlers for cleanup
-  trap cleanup_and_exit SIGTERM SIGINT SIGHUP
+  trap cleanup EXIT TERM HUP INT
 
-  # If BREW_PREFIX is already set, skip calling brew shellenv
-  if [[ -z "${BREW_PREFIX-}" ]]; then
-    # Load Homebrew PATHs
-    if ! program_is_in_path brew; then
-      echo "Could not find brew(1) in \$PATH" >&2
-      exit 1
-    fi
-    eval "$(brew shellenv)"
-  fi
-
-  if ! program_is_in_path dark-notify; then
-    echo "Could not find dark-notify(1) in \$PATH" >&2
+  if ! backend_check_deps; then
     exit 1
   fi
 
   while :; do
-    dark-notify -c "$0 --theme"
-    sleep 1 # Throttle the loop
+    backend_monitor_changes "$0 --theme" &
+    MONITOR_PID=$!
+    wait "$MONITOR_PID" || true
+    MONITOR_PID=
+    sleep 1
   done
-
-  # This should never be reached, but clean up just in case
-  cleanup_and_exit
 }
 
 theme_mode() {
@@ -265,7 +243,6 @@ main() {
     exit 0
     ;;
   "")
-    # Default mode: entry point
     entry_point_mode
     ;;
   *)

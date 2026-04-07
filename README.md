@@ -1,6 +1,6 @@
-# tmux-dark-notify - Make tmux's theme follow macOS dark/light mode
+# tmux-dark-notify - Make tmux's theme follow system dark/light mode
 
-This tmux [tpm][t] plugin automatically changes the tmux theme when the system switches between light/dark mode. Configure light and dark themes, and the plugin handles the rest!
+This tmux [tpm][t] plugin automatically changes the tmux theme when the system switches between light/dark mode on **macOS** and **Linux** (GNOME, KDE Plasma, COSMIC). Configure light and dark themes, and the plugin handles the rest!
 
 
 ![Demo of changing system theme](demo.gif)
@@ -19,27 +19,55 @@ This tmux [tpm][t] plugin automatically changes the tmux theme when the system s
 
 ## Features
 
-- 🌙 **Automatic theme switching** - Responds to macOS system appearance changes
-- 🔒 **Robust process management** - Lock file system prevents duplicate instances
-- 🎯 **Single-file design** - Simple unified script architecture
+- 🌙 **Automatic theme switching** - Responds to system appearance changes on macOS and Linux
+- 🔒 **Robust process management** - Per-server PID tracking prevents duplicate instances
+- 🎯 **Modular design** - Platform-specific backends with shared core
+- 🐧 **Linux support** - GNOME, KDE Plasma, and COSMIC via freedesktop portal with DE-specific fallbacks
 - 🛠️ **Manual control** - Switch themes manually when needed
 - 📁 **State management** - Maintains theme symlinks for tmux config integration
 - 🔧 **Error handling** - Comprehensive validation and helpful error messages
 
 ## Requirements
 
-- **macOS** - dark-notify is macOS-specific
+### macOS
+
 - **Bash** - For script execution
 - **Homebrew** - Package manager for dependencies
-- **[dark-notify][dn]** - Install with `brew install dark-notify`
+- **[dark-notify][dn]** - Install with `brew install cormacrelf/tap/dark-notify`
 - **tmux** - Terminal multiplexer
 - **[tpm][t]** - Tmux Plugin Manager (optional but recommended)
+
+### Linux
+
+- **Bash** - For script execution
+- **tmux** - Terminal multiplexer
+- **[tpm][t]** - Tmux Plugin Manager (optional but recommended)
+- **One of the following desktop environments:**
+  - **GNOME** - Uses `gsettings` or freedesktop portal (both typically pre-installed)
+  - **KDE Plasma** - Uses freedesktop portal via `dbus-send` and `dbus-monitor`
+  - **COSMIC (Pop!_OS)** - Reads config files directly; optionally install `inotify-tools` for instant detection
 
 ## Installation
 
 1. **Install dependencies:**
+
+   **macOS:**
    ```bash
-   brew install dark-notify
+   brew install cormacrelf/tap/dark-notify
+   ```
+
+   **Linux (GNOME/KDE):** No additional dependencies — `dbus` and `gsettings` are typically pre-installed.
+
+   **Linux (COSMIC):** Optionally install `inotify-tools` for instant theme detection:
+   ```bash
+   # Debian/Ubuntu/Pop!_OS
+   sudo apt install inotify-tools
+
+   # Fedora
+   sudo dnf install inotify-tools
+
+   # Arch
+   sudo pacman -S inotify-tools
    ```
 
 2. **Add plugin to tmux.conf:**
@@ -178,13 +206,36 @@ The plugin launches automatically with tmux and runs in the background, monitori
    ls -l ~/.local/state/tmux/tmux-dark-notify-theme.conf
    ```
 
+### Linux: No Detection Method Found
+
+The plugin auto-detects your desktop environment. If it can't find a supported method:
+
+1. **Check freedesktop portal:**
+   ```bash
+   dbus-send --session --print-reply \
+     --dest=org.freedesktop.portal.Desktop \
+     /org/freedesktop/portal/desktop \
+     org.freedesktop.portal.Settings.Read \
+     string:'org.freedesktop.appearance' string:'color-scheme'
+   ```
+
+2. **Check GNOME gsettings:**
+   ```bash
+   gsettings get org.gnome.desktop.interface color-scheme
+   ```
+
+3. **Check COSMIC config:**
+   ```bash
+   cat ~/.config/cosmic/com.system76.CosmicTheme.Mode/v1/is_dark
+   ```
+
 ### Multiple Instances Running
 
-The plugin uses a lock file system to prevent duplicate instances. If you see issues:
+The plugin uses per-server PID files to prevent duplicate instances. If you see issues:
 
-1. **Remove stale lock file:**
+1. **Remove stale PID files:**
    ```bash
-   rm ~/.local/state/tmux/tmux-dark-notify.lock
+   rm ~/.local/state/tmux/tmux-dark-notify-*.pid
    ```
 
 2. **Restart the plugin:**
