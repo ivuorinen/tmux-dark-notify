@@ -56,7 +56,9 @@ This tmux [tpm][t] plugin automatically changes the tmux theme when the system s
    brew install cormacrelf/tap/dark-notify
    ```
 
-   **Linux (GNOME/KDE):** No additional dependencies — `dbus` and `gsettings` are typically pre-installed.
+   **Linux (GNOME):** No additional dependencies — `gsettings` is typically pre-installed.
+
+   **Linux (KDE Plasma):** No additional dependencies — `dbus-send` and `dbus-monitor` are typically pre-installed.
 
    **Linux (COSMIC):** Optionally install `inotify-tools` for instant theme detection:
    ```bash

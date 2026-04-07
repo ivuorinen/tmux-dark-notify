@@ -18,10 +18,11 @@ scripts/backend-linux.sh       # Linux backend with DE fallback chain
 
 ### Backend Interface
 
-Each backend script defines two functions that `main.tmux` calls:
+Each backend script defines three functions that `main.tmux` calls:
 
 - **`backend_detect_mode`** — Returns `"dark"` or `"light"` for the current system appearance. Used for initial theme set on startup.
-- **`backend_monitor_changes <callback>`** — Blocks and invokes `<callback> dark` or `<callback> light` whenever the system appearance changes.
+- **`backend_monitor_changes <cmd> [args…]`** — Blocks and invokes `<cmd> [args…] dark` or `<cmd> [args…] light` whenever the system appearance changes. The callback is passed as argv (command + fixed args) to avoid word-splitting issues with paths containing spaces.
+- **`backend_check_deps`** — Verifies that the backend's required tools are available and returns a non-zero status with an error message if they are not.
 
 ### Platform Dispatch
 
@@ -54,7 +55,7 @@ Priority order:
 
 1. **Freedesktop portal** — `org.freedesktop.appearance.color-scheme` via `dbus-send`. Works across GNOME, KDE (with portal support), and any DE implementing the XDG desktop portal.
 2. **GNOME** — `gsettings get org.gnome.desktop.interface color-scheme`. Values: `'prefer-dark'` = dark, everything else = light.
-3. **KDE** — dbus query on `org.kde.kdeglobals`. Reads the color scheme name and infers dark/light.
+3. **KDE** — Uses the freedesktop portal (`dbus-send` on `org.freedesktop.portal.Settings`) when available, with a fallback to reading `~/.config/kdeglobals` (`ColorScheme=` key) to infer dark/light from the colour scheme name.
 4. **COSMIC** — Reads `~/.config/cosmic/com.system76.CosmicTheme.Mode/v1/is_dark`. Values: `true` = dark, `false` = light.
 
 ### Monitoring Strategies
@@ -63,7 +64,7 @@ Priority order:
 |--------|----------------|-------|
 | Freedesktop portal | `dbus-monitor` on `org.freedesktop.portal.Settings.SettingChanged` signal filtered to `org.freedesktop.appearance` + `color-scheme` | Most universal |
 | GNOME | `gsettings monitor org.gnome.desktop.interface color-scheme` | Emits new value on each change |
-| KDE | `dbus-monitor` on `org.kde.kdeglobals` changes | Watches for `ColorScheme` property changes |
+| KDE | `dbus-monitor` on `org.freedesktop.portal.Settings.SettingChanged` signal (same as portal method); kdeglobals read only for initial detection fallback | Needs portal support |
 | COSMIC | `inotifywait -m` on the config file, with fallback to 5-second polling if `inotifywait` is not installed | File-based detection |
 
 ### Detection Implementation
@@ -139,7 +140,7 @@ daemon_mode() {
   trap cleanup EXIT TERM HUP INT
 
   while :; do
-    backend_monitor_changes "$0 --theme" &
+    backend_monitor_changes "$0" "--theme" &
     MONITOR_PID=$!
     wait "$MONITOR_PID" || true
     MONITOR_PID=

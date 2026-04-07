@@ -213,7 +213,7 @@ daemon_mode() {
   tmux_set_theme_mode "$initial_mode"
 
   while :; do
-    backend_monitor_changes "$0 --theme" &
+    backend_monitor_changes "$0" "--theme" &
     MONITOR_PID=$!
     wait "$MONITOR_PID" || true
     MONITOR_PID=

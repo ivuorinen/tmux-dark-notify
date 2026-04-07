@@ -14,11 +14,13 @@ backend_detect_mode() {
   fi
 }
 
-# Blocks and calls <callback> with "dark" or "light" on appearance change.
-# Usage: backend_monitor_changes "/path/to/script --theme"
+# Blocks and calls <callback...> with "dark" or "light" on appearance change.
+# Usage: backend_monitor_changes "/path/to/script" "--theme"
 backend_monitor_changes() {
-  local callback="$1"
-  dark-notify -c "$callback"
+  local cmd
+  # dark-notify -c expects a shell command string; reconstruct safely from argv
+  printf -v cmd '%q ' "$@"
+  dark-notify -c "${cmd% }"
 }
 
 # Validate that required dependencies are available.

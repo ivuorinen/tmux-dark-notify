@@ -22,7 +22,7 @@ _portal_detect_mode() {
 }
 
 _portal_monitor_changes() {
-  local callback="$1"
+  local -a callback=("$@")
   dbus-monitor --session \
     "type='signal',interface='org.freedesktop.portal.Settings',member='SettingChanged',arg0='org.freedesktop.appearance',arg1='color-scheme'" 2>/dev/null |
   while read -r line; do
@@ -30,9 +30,9 @@ _portal_monitor_changes() {
       local value
       value=$(echo "$line" | grep -o 'uint32 [0-9]*' | tail -1 | cut -d' ' -f2)
       if [[ "$value" == "1" ]]; then
-        $callback dark
+        "${callback[@]}" dark
       else
-        $callback light
+        "${callback[@]}" light
       fi
     fi
   done
@@ -51,13 +51,13 @@ _gnome_detect_mode() {
 }
 
 _gnome_monitor_changes() {
-  local callback="$1"
+  local -a callback=("$@")
   gsettings monitor org.gnome.desktop.interface color-scheme 2>/dev/null |
   while read -r _key value; do
     if [[ "$value" == *"prefer-dark"* ]]; then
-      $callback dark
+      "${callback[@]}" dark
     else
-      $callback light
+      "${callback[@]}" light
     fi
   done
 }
@@ -79,7 +79,7 @@ _kde_detect_mode() {
     if [[ -f "$kde_config" ]]; then
       local scheme
       scheme=$(grep -i "^ColorScheme=" "$kde_config" 2>/dev/null | cut -d= -f2)
-      if [[ "$scheme" == *"[Dd]ark"* ]]; then
+      if [[ "$scheme" == *[Dd]ark* ]]; then
         echo "dark"
       else
         echo "light"
@@ -91,7 +91,7 @@ _kde_detect_mode() {
 }
 
 _kde_monitor_changes() {
-  local callback="$1"
+  local -a callback=("$@")
   dbus-monitor --session \
     "type='signal',interface='org.freedesktop.portal.Settings',member='SettingChanged',arg0='org.freedesktop.appearance',arg1='color-scheme'" 2>/dev/null |
   while read -r line; do
@@ -99,9 +99,9 @@ _kde_monitor_changes() {
       local value
       value=$(echo "$line" | grep -o 'uint32 [0-9]*' | tail -1 | cut -d' ' -f2)
       if [[ "$value" == "1" ]]; then
-        $callback dark
+        "${callback[@]}" dark
       else
-        $callback light
+        "${callback[@]}" light
       fi
     fi
   done
@@ -126,13 +126,13 @@ _cosmic_detect_mode() {
 }
 
 _cosmic_monitor_changes() {
-  local callback="$1"
+  local -a callback=("$@")
   if command -v inotifywait &>/dev/null; then
     inotifywait -m -e modify "$_COSMIC_CONFIG" 2>/dev/null |
     while read -r _dir _events _file; do
       local mode
       mode=$(_cosmic_detect_mode)
-      $callback "$mode"
+      "${callback[@]}" "$mode"
     done
   else
     # Polling fallback when inotifywait is not available
@@ -144,7 +144,7 @@ _cosmic_monitor_changes() {
       current_mode=$(_cosmic_detect_mode)
       if [[ "$current_mode" != "$last_mode" ]]; then
         last_mode="$current_mode"
-        $callback "$current_mode"
+        "${callback[@]}" "$current_mode"
       fi
     done
   fi
@@ -201,12 +201,11 @@ backend_detect_mode() {
 }
 
 backend_monitor_changes() {
-  local callback="$1"
   case "$LINUX_BACKEND" in
-    portal) _portal_monitor_changes "$callback" ;;
-    gnome)  _gnome_monitor_changes "$callback" ;;
-    kde)    _kde_monitor_changes "$callback" ;;
-    cosmic) _cosmic_monitor_changes "$callback" ;;
+    portal) _portal_monitor_changes "$@" ;;
+    gnome)  _gnome_monitor_changes "$@" ;;
+    kde)    _kde_monitor_changes "$@" ;;
+    cosmic) _cosmic_monitor_changes "$@" ;;
   esac
 }
 
