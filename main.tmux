@@ -249,7 +249,7 @@ daemon_mode() {
         darwin*) source "'"$SCRIPT_DIR"'/scripts/backend-macos.sh" ;;
         linux*)  source "'"$SCRIPT_DIR"'/scripts/backend-linux.sh" ;;
       esac
-      exec backend_monitor_changes "$@"
+      backend_monitor_changes "$@"
     ' _ "$0" "--theme" &
     MONITOR_PID=$!
     wait "$MONITOR_PID" || true
