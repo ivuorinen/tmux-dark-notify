@@ -73,7 +73,10 @@ create_pid_file() {
     fi
   fi
 
-  echo $$ > "$pid_file"
+  # Atomic PID file creation via noclobber
+  if ! (set -C; echo $$ > "$pid_file") 2>/dev/null; then
+    return 1
+  fi
 }
 
 check_pid_file() {
@@ -124,8 +127,9 @@ tmux_set_theme_mode() {
     theme_path=$(tmux_get_option "$OPTION_THEME_LIGHT")
   fi
 
-  # Expand variables like $HOME in theme path
-  theme_path=$(eval echo "$theme_path")
+  # Expand $HOME and ~ in theme path (safe alternative to eval)
+  theme_path="${theme_path//\$HOME/$HOME}"
+  theme_path="${theme_path/#\~/$HOME}"
   if [[ ! -r "$theme_path" ]]; then
     echo "The configured $mode theme is not readable: $theme_path" >&2
     exit 2
@@ -165,7 +169,7 @@ EOF
 
 cleanup() {
   [[ -n "${PID_FILE-}" ]] && rm -f "$PID_FILE"
-  [[ -n "${MONITOR_PID-}" ]] && kill "$MONITOR_PID" 2>/dev/null || true
+  [[ -n "${MONITOR_PID-}" ]] && { kill "$MONITOR_PID" 2>/dev/null || true; }
 }
 
 entry_point_mode() {
@@ -202,6 +206,11 @@ daemon_mode() {
   if ! backend_check_deps; then
     exit 1
   fi
+
+  # Set initial theme before monitoring for changes
+  local initial_mode
+  initial_mode=$(backend_detect_mode)
+  tmux_set_theme_mode "$initial_mode"
 
   while :; do
     backend_monitor_changes "$0 --theme" &

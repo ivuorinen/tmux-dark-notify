@@ -172,13 +172,10 @@ _linux_select_backend() {
     return
   fi
 
-  # 3. Try KDE (via portal or config file)
-  if command -v dbus-send &>/dev/null; then
-    local kde_config="${HOME}/.config/kdeglobals"
-    if [[ -f "$kde_config" ]]; then
-      LINUX_BACKEND="kde"
-      return
-    fi
+  # 3. Try KDE (check that KDE is actually the running desktop)
+  if [[ "${XDG_CURRENT_DESKTOP-}" == *"KDE"* ]] && command -v dbus-send &>/dev/null; then
+    LINUX_BACKEND="kde"
+    return
   fi
 
   # 4. Try COSMIC

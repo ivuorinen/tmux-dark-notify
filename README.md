@@ -187,8 +187,8 @@ The plugin launches automatically with tmux and runs in the background, monitori
    # Look for running daemon
    ps aux | grep tmux-dark-notify
 
-   # Check lock file
-   ls -la ~/.local/state/tmux/tmux-dark-notify.lock
+   # Check PID files
+   ls -la ~/.local/state/tmux/tmux-dark-notify-*.pid
    ```
 
 ### Themes Not Switching
