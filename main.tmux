@@ -73,8 +73,15 @@ create_pid_file() {
     fi
   fi
 
+  # Get process start time from /proc/<pid>/stat field 22 for PID recycling protection
+  local start_time=""
+  if [[ -f "/proc/$$/stat" ]]; then
+    start_time=$(awk '{print $22}' "/proc/$$/stat" 2>/dev/null || echo "")
+  fi
+
   # Atomic PID file creation via noclobber
-  if ! (set -C; echo $$ > "$pid_file") 2>/dev/null; then
+  # Format: PID<space>START_TIME
+  if ! (set -C; echo "$$ $start_time" > "$pid_file") 2>/dev/null; then
     return 1
   fi
 }
@@ -83,16 +90,28 @@ check_pid_file() {
   local pid_file="$1"
   [[ -f "$pid_file" ]] || return 1
 
-  local existing_pid
-  existing_pid=$(cat "$pid_file" 2>/dev/null)
+  local existing_pid existing_start_time
+  read -r existing_pid existing_start_time < "$pid_file" 2>/dev/null || return 1
 
-  if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
-    return 0  # Process is running
+  # First check if process exists
+  if [[ -z "$existing_pid" ]] || ! kill -0 "$existing_pid" 2>/dev/null; then
+    # Stale PID file
+    rm -f "$pid_file"
+    return 1
   fi
 
-  # Stale PID file
-  rm -f "$pid_file"
-  return 1
+  # Verify start time to prevent PID recycling false positives
+  if [[ -n "$existing_start_time" ]] && [[ -f "/proc/$existing_pid/stat" ]]; then
+    local current_start_time
+    current_start_time=$(awk '{print $22}' "/proc/$existing_pid/stat" 2>/dev/null || echo "")
+    if [[ "$current_start_time" != "$existing_start_time" ]]; then
+      # PID was recycled
+      rm -f "$pid_file"
+      return 1
+    fi
+  fi
+
+  return 0  # Process is running and matches
 }
 
 # =============================================================================
@@ -173,6 +192,13 @@ cleanup() {
   [[ -n "${MONITOR_PID-}" ]] && { kill -TERM -"$MONITOR_PID" 2>/dev/null || true; }
 }
 
+cleanup_on_signal() {
+  # Kill the monitor process group but don't remove PID file yet
+  [[ -n "${MONITOR_PID-}" ]] && { kill -TERM -"$MONITOR_PID" 2>/dev/null || true; }
+  # Exit non-zero so EXIT trap fires and cleanup() removes PID file
+  exit 1
+}
+
 entry_point_mode() {
   local pid_file
   pid_file=$(_compute_pid_file)
@@ -202,7 +228,8 @@ daemon_mode() {
     exit 1
   fi
 
-  trap cleanup EXIT TERM HUP INT
+  trap cleanup EXIT
+  trap cleanup_on_signal TERM HUP INT
 
   if ! backend_check_deps; then
     exit 1
