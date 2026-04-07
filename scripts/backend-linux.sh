@@ -153,16 +153,24 @@ _cosmic_monitor_changes() {
 # --- Backend selection ---------------------------------------------------
 
 _linux_select_backend() {
+  # Only attempt detection if we're in a graphical session with DBus
+  # Check for DBus session bus availability
+  if [[ -z "${DBUS_SESSION_BUS_ADDRESS-}" ]] && [[ -z "${DISPLAY-}" ]] && [[ -z "${WAYLAND_DISPLAY-}" ]]; then
+    # Non-graphical context, skip DBus checks
+    LINUX_BACKEND=""
+    return
+  fi
+
   # 1. Try freedesktop portal
-  if command -v dbus-send &>/dev/null; then
-    dbus-send --session --print-reply \
+  if command -v dbus-send &>/dev/null && [[ -n "${DBUS_SESSION_BUS_ADDRESS-}" ]]; then
+    if dbus-send --session --print-reply \
       --dest=org.freedesktop.portal.Desktop \
       /org/freedesktop/portal/desktop \
       org.freedesktop.portal.Settings.Read \
-      string:'org.freedesktop.appearance' string:'color-scheme' &>/dev/null && {
+      string:'org.freedesktop.appearance' string:'color-scheme' &>/dev/null; then
       LINUX_BACKEND="portal"
       return
-    }
+    fi
   fi
 
   # 2. Try GNOME gsettings
@@ -173,7 +181,7 @@ _linux_select_backend() {
   fi
 
   # 3. Try KDE (check that KDE is actually the running desktop)
-  if [[ "${XDG_CURRENT_DESKTOP-}" == *"KDE"* ]] && command -v dbus-send &>/dev/null; then
+  if [[ "${XDG_CURRENT_DESKTOP-}" == *"KDE"* ]] && command -v dbus-send &>/dev/null && [[ -n "${DBUS_SESSION_BUS_ADDRESS-}" ]]; then
     LINUX_BACKEND="kde"
     return
   fi
@@ -184,9 +192,8 @@ _linux_select_backend() {
     return
   fi
 
-  echo "No supported dark mode detection method found on this system." >&2
-  echo "Supported: freedesktop portal, GNOME, KDE Plasma, COSMIC" >&2
-  exit 1
+  # No backend found - set empty backend (will be checked in backend_check_deps)
+  LINUX_BACKEND=""
 }
 
 # --- Public interface (called by main.tmux) ------------------------------
@@ -197,6 +204,7 @@ backend_detect_mode() {
     gnome)  _gnome_detect_mode ;;
     kde)    _kde_detect_mode ;;
     cosmic) _cosmic_detect_mode ;;
+    *)      echo "light" ;;  # Default fallback
   esac
 }
 
@@ -206,10 +214,21 @@ backend_monitor_changes() {
     gnome)  _gnome_monitor_changes "$@" ;;
     kde)    _kde_monitor_changes "$@" ;;
     cosmic) _cosmic_monitor_changes "$@" ;;
+    *)      # No backend available, sleep indefinitely
+            while :; do sleep 3600; done
+            ;;
   esac
 }
 
 backend_check_deps() {
+  # Check if no backend was detected
+  if [[ -z "$LINUX_BACKEND" ]]; then
+    echo "No supported dark mode detection method found on this system." >&2
+    echo "Supported: freedesktop portal, GNOME, KDE Plasma, COSMIC" >&2
+    echo "The plugin will not monitor theme changes, but can still switch themes manually." >&2
+    return 1
+  fi
+
   case "$LINUX_BACKEND" in
     portal|kde)
       if ! command -v dbus-send &>/dev/null; then

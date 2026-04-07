@@ -169,7 +169,8 @@ EOF
 
 cleanup() {
   [[ -n "${PID_FILE-}" ]] && rm -f "$PID_FILE"
-  [[ -n "${MONITOR_PID-}" ]] && { kill "$MONITOR_PID" 2>/dev/null || true; }
+  # Kill the monitor process group to terminate all children
+  [[ -n "${MONITOR_PID-}" ]] && { kill -TERM -"$MONITOR_PID" 2>/dev/null || true; }
 }
 
 entry_point_mode() {
@@ -213,7 +214,9 @@ daemon_mode() {
   tmux_set_theme_mode "$initial_mode"
 
   while :; do
-    backend_monitor_changes "$0" "--theme" &
+    # Start backend_monitor_changes in its own process group using setsid
+    # so that cleanup() can kill the entire process group
+    setsid bash -c 'exec backend_monitor_changes "$@"' _ "$0" "--theme" &
     MONITOR_PID=$!
     wait "$MONITOR_PID" || true
     MONITOR_PID=
