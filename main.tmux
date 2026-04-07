@@ -216,7 +216,14 @@ daemon_mode() {
   while :; do
     # Start backend_monitor_changes in its own process group using setsid
     # so that cleanup() can kill the entire process group
-    setsid bash -c 'exec backend_monitor_changes "$@"' _ "$0" "--theme" &
+    # Source the backend script in the subshell so it can access backend_monitor_changes
+    setsid bash -c '
+      case "$OSTYPE" in
+        darwin*) source "'"$SCRIPT_DIR"'/scripts/backend-macos.sh" ;;
+        linux*)  source "'"$SCRIPT_DIR"'/scripts/backend-linux.sh" ;;
+      esac
+      exec backend_monitor_changes "$@"
+    ' _ "$0" "--theme" &
     MONITOR_PID=$!
     wait "$MONITOR_PID" || true
     MONITOR_PID=
