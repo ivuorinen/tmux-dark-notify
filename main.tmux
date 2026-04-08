@@ -240,6 +240,11 @@ daemon_mode() {
   initial_mode=$(backend_detect_mode)
   tmux_set_theme_mode "$initial_mode"
 
+  # Backoff state for exponential retry
+  local backoff_seconds=1
+  local max_backoff=60
+  local consecutive_failures=0
+
   while :; do
     # Start backend_monitor_changes in its own process group using setsid
     # so that cleanup() can kill the entire process group
@@ -252,9 +257,28 @@ daemon_mode() {
       backend_monitor_changes "$@"
     ' _ "$0" "--theme" &
     MONITOR_PID=$!
-    wait "$MONITOR_PID" || true
+
+    # Capture exit status deterministically
+    local exit_status=0
+    wait "$MONITOR_PID" || exit_status=$?
     MONITOR_PID=
-    sleep 1
+
+    if [[ $exit_status -ne 0 ]]; then
+      consecutive_failures=$((consecutive_failures + 1))
+      echo "[$SCRIPT_NAME] backend_monitor_changes exited with status $exit_status (setsid process failure #$consecutive_failures)" >&2
+
+      # Exponential backoff with cap
+      sleep "$backoff_seconds"
+      backoff_seconds=$((backoff_seconds * 2))
+      if [[ $backoff_seconds -gt $max_backoff ]]; then
+        backoff_seconds=$max_backoff
+      fi
+    else
+      # Successful run (clean exit) - reset backoff
+      consecutive_failures=0
+      backoff_seconds=1
+      sleep 1
+    fi
   done
 }
 
